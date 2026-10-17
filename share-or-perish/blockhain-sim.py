@@ -1,5 +1,5 @@
 # Blockchain simulation for Share or Perish: https://github.com/monero-project/research-lab/issues/146
-# (c) 2025 tevador
+# (c) 2025-2026 tevador
 # MIT license
 
 import random
@@ -7,17 +7,20 @@ import random
 HONEST_HR = 6
 ATTACK_HR = 3
 
-UNIQUE_SHARES = False
-UNCLE_BLOCKS = True
+UNIQUE_SHARES = True
+UNCLE_BLOCKS = False
 
-W = 8
+W = 16
 K = 3
 STUBBORNNESS = 5
 GAMMA = 0.5
-SIM_ROUNDS = 10000
+SIM_ROUNDS = 1000000
+MIN_REORG_DEPTH = 10
 
 ##########################################################################
 
+# The simulation pessimistically assumes that the attacker's hashrate is not
+# included in the difficulty calculation.
 BLOCK_DIFF = HONEST_HR * 120
 SHARE_DIFF = BLOCK_DIFF / W
 
@@ -37,10 +40,12 @@ class Blockchain:
         self.shares = set() if UNIQUE_SHARES else list()
         self.num_blocks = 0
         self.weight = 0
+        self.skip_weight = 0
 
     def soft_reset(self):
         self.num_blocks = 0
         self.weight = 0
+        self.skip_weight = 0
 
     def add_share(self, shr):
         if isinstance(self.shares, set):
@@ -64,6 +69,8 @@ class Blockchain:
                 wt = 1 + len(self.shares)
                 self.num_blocks += 1
                 self.weight += wt
+                if self.num_blocks > 1:
+                    self.skip_weight += wt
                 self.shares.clear()
                 #output += f"{self.name} found a block: {h}, wt: {wt} !!!\n"
                 # the attacker can use honest blocks as uncles
@@ -110,10 +117,13 @@ for i in range(SIM_ROUNDS):
         output = honest_bc.mine(output, attack_bc)
         output = attack_bc.mine(output, None)
         total_seconds += 1
-        if attack_bc.weight > honest_bc.weight and honest_bc.num_blocks >= 10:
+        if honest_bc.weight - attack_bc.weight <= 0 \
+            and (attack_bc.skip_weight >= W * (K - 1) or honest_bc.skip_weight >= W * (K - 1)) \
+            and honest_bc.num_blocks >= MIN_REORG_DEPTH:
             break
     diff = honest_bc.weight - attack_bc.weight
-    if attack_bc.weight < W * K or honest_bc.num_blocks < 10:
+    if attack_bc.skip_weight < W * (K - 1) and honest_bc.skip_weight < W * (K - 1) \
+        or honest_bc.num_blocks < MIN_REORG_DEPTH:
         #print_stats(i, diff, "FAIL")
         continue
     if diff < 0 or (diff == 0 and random.random() > GAMMA):
