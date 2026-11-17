@@ -13,6 +13,8 @@
 #   - config via CLI args; UNIQUE_SHARES=False caveat documented
 #   - UNCLE_BLOCKS dead-code/comment mismatch documented (unreachable for the
 #     attacker, which is the only caller passing other_bc=None)
+#   - exact-score tie rate among decisive comparisons (informs the section
+#     5.1 tie-breaking analysis; ties resolve by GAMMA here)
 
 import argparse
 import math
@@ -138,6 +140,8 @@ attack_bc = Blockchain("attacker", ATTACK_HR)
 total_seconds = 0
 num_attacks = 0
 depths = []
+decisive_contests = 0
+exact_ties = 0
 reorg = False
 
 for i in range(SIM_ROUNDS):
@@ -164,6 +168,9 @@ for i in range(SIM_ROUNDS):
     if attack_bc.skip_weight < W * (K - 1) and honest_bc.skip_weight < W * (K - 1) \
         or honest_bc.num_blocks < MIN_REORG_DEPTH:
         continue
+    decisive_contests += 1
+    if diff == 0:
+        exact_ties += 1
     if diff < 0 or (diff == 0 and random.random() > GAMMA):
         num_attacks += 1
         depths.append(honest_bc.num_blocks)
@@ -185,6 +192,9 @@ if num_attacks > 0:
           f"DA-scaled x{DA_SCALE:.2f}: {days * DA_SCALE:.3f} days/attack")
     print(f"Reorg depth: avg {statistics.fmean(depths):.2f} "
           f"median {depths[len(depths)//2]} max {depths[-1]} (n={num_attacks})")
+    print(f"Exact-score ties among decisive comparisons: "
+          f"{exact_ties}/{decisive_contests} "
+          f"({100*exact_ties/max(decisive_contests,1):.1f}%)")
 else:
     # 0 events: one-sided 95% upper bound on the rate (3.69/T)
     print(f"Time: {total_seconds}, attacks: 0, "
